@@ -7,6 +7,7 @@ from langchain_core.tools import tool
 from langchain.agents import create_agent
 from langchain.chat_models import init_chat_model
 from agent.auth.amadeus_auth import AmadeusAuth
+from langchain_core.prompts import ChatPromptTemplate
 
 # Configure logging
 logging.basicConfig(
@@ -74,92 +75,118 @@ def simplify_flights_response(resp: dict) -> dict:
 auth = AmadeusAuth()
 
 # ---- Flight Search Tool ----
-def search_flights(
-    origin_location_code: str,
-    destination_location_code: str,
-    departure_date: str,
-    return_date: str | None = None,
-    number_of_adults: int = 1,
-    number_of_children: int = 0,
-    travel_class: str = "ECONOMY",
-    max_price: int | None = None,
-    num_results: int = 5,
-) -> dict:
-    """
-    Search flights between two cities with Amadeus (test API).
+# @tool
+# def search_flights(
+#     origin_location_code: str,
+#     destination_location_code: str,
+#     departure_date: str,
+#     return_date: str | None = None,
+#     number_of_adults: int = 1,
+#     number_of_children: int = 0,
+#     travel_class: str = "ECONOMY",
+#     max_price: int | None = None,
+#     num_results: int = 5,
+# ) -> dict:
+#     """
+#     Search flights between two cities with Amadeus (test API).
     
-    Args:
-        origin_location_code: IATA code of the origin city (e.g., "SYD").
-        destination_location_code: IATA code of the destination city (e.g., "BKK").
-        departure_date: Departure date in YYYY-MM-DD format.
-        return_date: Optional return date in YYYY-MM-DD format.
-        number_of_adults: Number of adult passengers.
-        number_of_children: Number of child passengers.
-        travel_class: Travel class ("ECONOMY", "PREMIUM_ECONOMY", "BUSINESS", "FIRST").
-        max_price: Optional maximum price filter.
-        num_results: Maximum number of flight results to return.
+#     Args:
+#         origin_location_code: IATA code of the origin city (e.g., "SYD").
+#         destination_location_code: IATA code of the destination city (e.g., "BKK").
+#         departure_date: Departure date in YYYY-MM-DD format.
+#         return_date: Optional return date in YYYY-MM-DD format.
+#         number_of_adults: Number of adult passengers.
+#         number_of_children: Number of child passengers.
+#         travel_class: Travel class ("ECONOMY", "PREMIUM_ECONOMY", "BUSINESS", "FIRST").
+#         max_price: Optional maximum price filter.
+#         num_results: Maximum number of flight results to return.
         
-    example call:
-        search_flights (
-            origin_location_code="SYD",
-            destination_location_code="BKK",
-            departure_date="2025-11-01",
-            return_date="2025-11-10",       # optional
-            number_of_adults=1,
-            number_of_children=0,
-            travel_class="ECONOMY",
-            max_price=600,
-            num_results=2
-        )
+#     example call:
+#         search_flights (
+#             origin_location_code="SYD",
+#             destination_location_code="BKK",
+#             departure_date="2025-11-01",
+#             return_date="2025-11-10",       # optional
+#             number_of_adults=1,
+#             number_of_children=0,
+#             travel_class="ECONOMY",
+#             max_price=600,
+#             num_results=2
+#         )
         
-    Returns:
-        dict: Simplified flight search results.
-    """
+#     Returns:
+#         dict: Simplified flight search results.
+#     """
 
-    token = auth.get_token()
-    headers = {"Authorization": f"Bearer {token}"}
+#     token = auth.get_token()
+#     headers = {"Authorization": f"Bearer {token}"}
 
-    # Build query params conditionally
-    params = {
-        "originLocationCode": origin_location_code,
-        "destinationLocationCode": destination_location_code,
-        "departureDate": departure_date,
-        "adults": number_of_adults,
-        "children": number_of_children,
-        "travelClass": travel_class,
-        "max": num_results,
-    }
-    if return_date:
-        params["returnDate"] = return_date
-    if max_price:
-        params["maxPrice"] = max_price
+#     # Build query params conditionally
+#     params = {
+#         "originLocationCode": origin_location_code,
+#         "destinationLocationCode": destination_location_code,
+#         "departureDate": departure_date,
+#         "adults": number_of_adults,
+#         "children": number_of_children,
+#         "travelClass": travel_class,
+#         "max": num_results,
+#     }
+#     if return_date:
+#         params["returnDate"] = return_date
+#     if max_price:
+#         params["maxPrice"] = max_price
 
-    url = "https://test.api.amadeus.com/v2/shopping/flight-offers"
+#     url = "https://test.api.amadeus.com/v2/shopping/flight-offers"
 
-    # Log details
-    logger.info("Calling Amadeus API")
-    logger.info(f"URL: {url}")
-    logger.info(f"Params: {params}")
-    logger.debug(f"Headers: {headers}")
+#     # Log details
+#     logger.info("Calling Amadeus API")
+#     logger.info(f"URL: {url}")
+#     logger.info(f"Params: {params}")
+#     logger.debug(f"Headers: {headers}")
 
-    resp = requests.get(url, headers=headers, params=params)
+#     resp = requests.get(url, headers=headers, params=params)
 
-    logger.info(f"Response status: {resp.status_code}")
-    if resp.status_code != 200:
-        logger.error(f"Error response: {resp.text}")
-        return {"status": "failed to retrieve flights", "details": resp.text}
+#     logger.info(f"Response status: {resp.status_code}")
+#     if resp.status_code != 200:
+#         logger.error(f"Error response: {resp.text}")
+#         return {"status": "failed to retrieve flights", "details": resp.text}
 
-    return simplify_flights_response(resp.json())
+#     return simplify_flights_response(resp.json())
 
-
+@tool
+def search_flights(depating_from, destination):
+    """tool to find a find"""
+    return {"status": "successly retrieved flights", "flights": [f"flight 1 from {depating_from} to {destination}", f"flight 2 from {depating_from} to {destination}"]}
 # ---- Agent ----
 model = init_chat_model("openai:gpt-5-nano", temperature=0)
 
+flight_agent_prompt = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system",
+            "You are a helpful flight search assistant. Your role is to gather all necessary information from the user to search for flights."
+            "\n\nKey responsibilities:"
+            "\n- Always look through the history of the conversation to avoid asking for information that has already been provided"
+            "\n- Ask clear, direct questions to collect: departure city, destination city, travel dates, number of passengers, and any preferences (class, direct flights, etc.)"
+            "\n- Ask ONE question at a time to avoid overwhelming the user"
+            "\n- Keep responses concise and to the point"
+            "\n- Assume the user has a valid passport and can travel internationally"
+            "\n- Trust the information provided by the user"
+            "\n- ONLY ask for clarification if the user provides conflicting information"
+            "\n- Once you have all required information (origin, destination, dates, passengers), call the 'search_flights' tool EXACTLY ONCE"
+            "\n\nImportant constraints:"
+            "\n- Stay focused exclusively on flight search - do not answer off-topic questions"
+            "\n- Do not discuss technical implementation details or APIs"
+            "\n- Do not engage in general conversation unrelated to finding flights"
+            "\n-Current user info: {{user_info}}."
+            "\n\nCurrent time: {{time}}.",
+        ),
+        ("placeholder", "{{messages}}"),
+    ]
+)
+
 flight_agent = create_agent(
     model=model,
-    prompt="""You are a helpful flight assistant. 
-    Keep asking questions until you have all the information needed to search for flights.
-    Use tools to find flights to and 
-    from the vacation destination. ONLY call the 'search_flights' tool a single time.""",
+    prompt=flight_agent_prompt,
     tools=[search_flights],
 )
