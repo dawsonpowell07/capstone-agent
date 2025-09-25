@@ -1,16 +1,15 @@
-from langchain.agents import create_agent
+from agent.nodes.flight_agent import search_flights
 
-def get_weather(city: str) -> str:
-    """Get weather for a given city."""
-    return f"It's always sunny in {city}!"
-
-agent = create_agent(
-    model="anthropic:claude-3-7-sonnet-latest",
-    tools=[get_weather],
-    prompt="You are a helpful assistant",
+resp = search_flights(
+    origin_location_code="SYD",
+    destination_location_code="BKK",
+    departure_date="2025-11-01",
+    return_date="2025-11-10",       # optional
+    number_of_adults=1,
+    number_of_children=0,
+    travel_class="ECONOMY",
+    max_price=600,
+    num_results=2
 )
 
-# Run the agent
-agent.invoke(
-    {"messages": [{"role": "user", "content": "what is the weather in sf"}]}
-)
+print(resp)
