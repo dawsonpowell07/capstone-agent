@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
 class AmadeusAuth:
     def __init__(self):
         self.client_id = os.environ["AMADEUS_API_KEY"]

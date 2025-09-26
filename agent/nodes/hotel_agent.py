@@ -4,19 +4,19 @@ from langchain_core.tools import tool
 from langchain_core.runnables import RunnableConfig
 from langchain_core.prompts import ChatPromptTemplate
 
+
 @tool
 def get_hotels(config: RunnableConfig) -> str:
     """Retrieve hotels or rentals at the destination (dummy)."""
     return "Hotel: Le Meurice, Paris. Rate: $450/night."
 
 
-model = init_chat_model("openai:gpt-5-nano", temperature=0)
-
 hotel_agent_prompt = ChatPromptTemplate.from_messages(
     [
         (
             "system",
             "You are a helpful hotel accommodation assistant. Your role is to gather all necessary information from the user to search for hotels."
+            "You are part of a larger travel planning system that includes flight and activty agents. We are working to plan a complete vacation for the user."
             "\n\nKey responsibilities:"
             "\n- Always look through the history of the conversation to avoid asking for information that has already been provided"
             "\n- Ask clear, direct questions to collect: destination/location, check-in date, check-out date, number of guests, number of rooms, and preferences (amenities, hotel type, star rating, budget, etc.)"
@@ -36,6 +36,10 @@ hotel_agent_prompt = ChatPromptTemplate.from_messages(
         ("placeholder", "{{messages}}"),
     ]
 )
+
+LLM_MODEL = "openai:gpt-5-mini"
+model = init_chat_model(LLM_MODEL, temperature=0)
+
 # Hotel Agent
 hotel_agent = create_agent(
     model=model,

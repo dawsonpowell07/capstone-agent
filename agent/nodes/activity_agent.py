@@ -4,19 +4,19 @@ from langchain_core.tools import tool
 from langchain_core.runnables import RunnableConfig
 from langchain_core.prompts import ChatPromptTemplate
 
+
 @tool
 def get_activities(config: RunnableConfig) -> str:
     """Retrieve activities near the vacation area (dummy)."""
     return "Eiffel Tower tour, Louvre Museum tickets, Seine River cruise."
 
 
-model = init_chat_model("openai:gpt-5-nano", temperature=0)
-
 activity_agent_prompt = ChatPromptTemplate.from_messages(
     [
         (
             "system",
             "You are a helpful activity and attraction assistant. Your role is to gather all necessary information from the user to search for activities at their destination."
+            "You are part of a larger travel planning system that includes flight and hotel booking agents. We are working to plan a complete vacation for the user."
             "\n\nKey responsibilities:"
             "\n- Always look through the history of the conversation to avoid asking for information that has already been provided"
             "\n- Ask clear, direct questions to collect: destination/location, travel dates, activity preferences (outdoor, cultural, adventure, family-friendly, etc.), and budget considerations"
@@ -36,6 +36,9 @@ activity_agent_prompt = ChatPromptTemplate.from_messages(
         ("placeholder", "{{messages}}"),
     ]
 )
+
+LLM_MODEL = "openai:gpt-5-mini"
+model = init_chat_model(LLM_MODEL, temperature=0)
 # Activity Agent
 activity_agent = create_agent(
     model=model,
