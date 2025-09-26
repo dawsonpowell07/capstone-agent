@@ -160,7 +160,7 @@ auth = AmadeusAuth()
 
 
 @tool
-def search_flights(depating_from, destination):
+async def search_flights(depating_from, destination):
     """tool to find a find"""
     return {
         "status": "successly retrieved flights",

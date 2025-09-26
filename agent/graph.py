@@ -72,15 +72,30 @@ def user_info(state: State):
     return {"user_info": "male 21 years old, likes hiking and food"}
 
 
+async def call_flight_agent(state: State):
+    # Call the flight agent and update state with its messages
+    new_state = await flight_agent.ainvoke(state)
+    return new_state
+
+async def call_hotel_agent(state: State):
+    # Call the hotel agent and update state with its messages
+    new_state = await hotel_agent.ainvoke(state)
+    return new_state
+
+async def call_activity_agent(state: State):
+    # Call the activity agent and update state with its messages
+    new_state = await activity_agent.ainvoke(state)
+    return new_state
+
 # ---- Build the graph ----
 builder = StateGraph(State)
 
 builder.add_node("user_info", user_info)
 
 # Agents
-builder.add_node("flight_agent", flight_agent)
-builder.add_node("hotel_agent", hotel_agent)
-builder.add_node("activity_agent", activity_agent)
+builder.add_node("flight_agent", call_flight_agent)
+builder.add_node("hotel_agent", call_hotel_agent)
+builder.add_node("activity_agent", call_activity_agent)
 
 # Approval nodes
 builder.add_node("human_approve_flights", human_approve_flights)
