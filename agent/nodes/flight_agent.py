@@ -3,9 +3,6 @@ from langchain_core.tools import tool
 from langchain.agents import create_agent
 from langchain.chat_models import init_chat_model
 from agent.auth.amadeus_auth import AmadeusAuth
-from langchain_core.prompts import ChatPromptTemplate
-from agent.state import State
-from langgraph.types import interrupt, Command
 
 # Configure logging
 logging.basicConfig(

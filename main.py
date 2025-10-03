@@ -1,9 +1,9 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
-import uuid
+import json
 from langgraph.checkpoint.memory import MemorySaver
-from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
+from langchain_core.messages import BaseMessage
 from langgraph.types import Command
 from langchain_core.runnables import RunnableConfig
 from agent.graph import builder
@@ -16,8 +16,9 @@ graph = builder.compile(checkpointer=checkpointer)
 
 class ChatRequest(BaseModel):
     message: str
-    chat_history: Optional[List[dict]] = None
-    thread_id: Optional[str] = None
+
+class ResumeRequest(BaseModel):
+    decision: str  # "approve" or the rejection feedback
 
 class ChatResponse(BaseModel):
     response: str
@@ -25,10 +26,16 @@ class ChatResponse(BaseModel):
     messages: List[Dict[str, Any]]
     interrupt: Optional[Dict[str, Any]] = None
 
+class StreamMessage(BaseModel):
+    type: str  # "node_start", "node_end", "message", "interrupt", "error", "complete"
+    data: Dict[str, Any]
+    thread_id: str
+
 def message_to_dict(msg: BaseMessage) -> Dict[str, Any]:
     """Convert LangChain message to dictionary"""
     return {
-        "role": msg.type,  # "human", "ai", "system", etc.
+        # "human", "ai", "system", etc.
+        "role": msg.type,  
         "content": msg.content,
     }
 
@@ -48,31 +55,24 @@ def extract_interrupt_data(interrupt_list) -> Optional[Dict[str, Any]]:
     else:
         return {"data": str(first_interrupt)}
     
-@app.post("/chat")
-async def chat_endpoint(request: ChatRequest) -> ChatResponse:
-    
-    # Generate or use provided thread_id
-    thread_id = request.thread_id or str(uuid.uuid4())
-    chat_history = request.chat_history or []
-    message = request.message
-    # Create config with proper typing
+@app.post("/chat/{thread_id}")
+async def chat_endpoint(thread_id: str, request: ChatRequest) -> ChatResponse:
+    """Send a message to a specific thread"""
     config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
-    
+
     try:
-        
-        chat_history.append(HumanMessage(content=message))
         # Invoke the graph with the user message (async)
         result = await graph.ainvoke(
             {"messages": [{"role": "user", "content": request.message}]},
             config=config
         )
-        
+
         # Check if there's an interrupt
         interrupt_data = result.get("__interrupt__")
-        
+
         # Convert messages to dictionaries
         messages = [message_to_dict(msg) for msg in result.get("messages", [])]
-        
+
         if interrupt_data:
             # There's a human approval needed
             return ChatResponse(
@@ -81,62 +81,57 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
                 messages=messages,
                 interrupt=extract_interrupt_data(interrupt_data)
             )
-        
+
         # Extract the last AI message
         last_message = messages[-1] if messages else {"content": "No response"}
-        
+
         return ChatResponse(
             response=last_message.get("content", ""),
             thread_id=thread_id,
             messages=messages,
             interrupt=None
         )
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-class ResumeRequest(BaseModel):
-    thread_id: str
-    decision: str  # "approve" or the rejection feedback
-    
-@app.post("/resume")
-async def resume_endpoint(request: ResumeRequest) -> ChatResponse:
+@app.post("/resume/{thread_id}")
+async def resume_endpoint(thread_id: str, request: ResumeRequest) -> ChatResponse:
     """Resume a conversation after human approval/rejection"""
-    
-    config: RunnableConfig = {"configurable": {"thread_id": request.thread_id}}
-    
+    config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
+
     try:
         # Resume with the Command (async)
         result = await graph.ainvoke(
             Command(resume=request.decision),
             config=config
         )
-        
+
         # Check if there's another interrupt
         interrupt_data = result.get("__interrupt__")
-        
+
         # Convert messages to dictionaries
         messages = [message_to_dict(msg) for msg in result.get("messages", [])]
-        
+
         if interrupt_data:
             return ChatResponse(
                 response="Approval needed",
-                thread_id=request.thread_id,
+                thread_id=thread_id,
                 messages=messages,
                 interrupt=extract_interrupt_data(interrupt_data)
             )
-        
+
         # Extract the last AI message
         last_message = messages[-1] if messages else {"content": "No response"}
-        
+
         return ChatResponse(
             response=last_message.get("content", ""),
-            thread_id=request.thread_id,
+            thread_id=thread_id,
             messages=messages,
             interrupt=None
         )
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -162,6 +157,155 @@ async def get_thread_state(thread_id: str):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.websocket("/ws/chat/{thread_id}")
+async def websocket_chat(websocket: WebSocket, thread_id: str):
+    """WebSocket endpoint for streaming agent outputs"""
+    await websocket.accept()
+
+    try:
+        while True:
+            # Wait for user message
+            data = await websocket.receive_text()
+            message_data = json.loads(data)
+            user_message = message_data.get("message", "")
+
+            if not user_message:
+                await websocket.send_text(json.dumps({
+                    "type": "error",
+                    "data": {"error": "Message is required"},
+                    "thread_id": thread_id
+                }))
+                continue
+
+            config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
+
+            try:
+                # Stream the graph execution
+                async for chunk in graph.astream(
+                    {"messages": [{"role": "user", "content": user_message}]},
+                    config=config
+                ):
+                    # Send node start/end events
+                    for node_name, node_data in chunk.items():
+                        if node_name == "__interrupt__":
+                            # Handle interrupt
+                            interrupt_msg = StreamMessage(
+                                type="interrupt",
+                                data=extract_interrupt_data(node_data) or {},
+                                thread_id=thread_id
+                            )
+                            await websocket.send_text(interrupt_msg.model_dump_json())
+                            break
+                        else:
+                            # Send node execution update
+                            stream_msg = StreamMessage(
+                                type="node_update",
+                                data={
+                                    "node": node_name,
+                                    "messages": [message_to_dict(msg) for msg in node_data.get("messages", [])],
+                                    "state": {k: v for k, v in node_data.items() if k != "messages"}
+                                },
+                                thread_id=thread_id
+                            )
+                            await websocket.send_text(stream_msg.model_dump_json())
+
+                # Send completion message if no interrupt
+                final_state = await graph.aget_state(config)
+                if not final_state.next:
+                    complete_msg = StreamMessage(
+                        type="complete",
+                        data={"final_state": dict(final_state.values)},
+                        thread_id=thread_id
+                    )
+                    await websocket.send_text(complete_msg.model_dump_json())
+
+            except Exception as e:
+                error_msg = StreamMessage(
+                    type="error",
+                    data={"error": str(e)},
+                    thread_id=thread_id
+                )
+                await websocket.send_text(error_msg.model_dump_json())
+
+    except WebSocketDisconnect:
+        print(f"WebSocket disconnected for thread {thread_id}")
+    except Exception as e:
+        print(f"WebSocket error for thread {thread_id}: {e}")
+
+
+@app.websocket("/ws/resume/{thread_id}")
+async def websocket_resume(websocket: WebSocket, thread_id: str):
+    """WebSocket endpoint for resuming after interrupts"""
+    await websocket.accept()
+
+    try:
+        # Wait for decision
+        data = await websocket.receive_text()
+        decision_data = json.loads(data)
+        decision = decision_data.get("decision", "")
+
+        if not decision:
+            await websocket.send_text(json.dumps({
+                "type": "error",
+                "data": {"error": "Decision is required"},
+                "thread_id": thread_id
+            }))
+            return
+
+        config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
+
+        try:
+            # Stream the resumed execution
+            async for chunk in graph.astream(
+                Command(resume=decision),
+                config=config
+            ):
+                # Send updates similar to chat endpoint
+                for node_name, node_data in chunk.items():
+                    if node_name == "__interrupt__":
+                        interrupt_msg = StreamMessage(
+                            type="interrupt",
+                            data=extract_interrupt_data(node_data) or {},
+                            thread_id=thread_id
+                        )
+                        await websocket.send_text(interrupt_msg.model_dump_json())
+                        break
+                    else:
+                        stream_msg = StreamMessage(
+                            type="node_update",
+                            data={
+                                "node": node_name,
+                                "messages": [message_to_dict(msg) for msg in node_data.get("messages", [])],
+                                "state": {k: v for k, v in node_data.items() if k != "messages"}
+                            },
+                            thread_id=thread_id
+                        )
+                        await websocket.send_text(stream_msg.model_dump_json())
+
+            # Send completion if no more interrupts
+            final_state = await graph.aget_state(config)
+            if not final_state.next:
+                complete_msg = StreamMessage(
+                    type="complete",
+                    data={"final_state": dict(final_state.values)},
+                    thread_id=thread_id
+                )
+                await websocket.send_text(complete_msg.model_dump_json())
+
+        except Exception as e:
+            error_msg = StreamMessage(
+                type="error",
+                data={"error": str(e)},
+                thread_id=thread_id
+            )
+            await websocket.send_text(error_msg.model_dump_json())
+
+    except WebSocketDisconnect:
+        print(f"Resume WebSocket disconnected for thread {thread_id}")
+    except Exception as e:
+        print(f"Resume WebSocket error for thread {thread_id}: {e}")
 
 
 if __name__ == "__main__":
