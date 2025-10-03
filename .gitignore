@@ -11,3 +11,6 @@ wheels/
 .env
 
 *.pckl
+
+
+CLAUDE.md
