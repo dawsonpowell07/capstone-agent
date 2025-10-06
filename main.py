@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends, Security
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import json
@@ -7,18 +7,23 @@ from langchain_core.messages import BaseMessage
 from langgraph.types import Command
 from langchain_core.runnables import RunnableConfig
 from agent.graph import builder
+from utils import VerifyToken
 
 app = FastAPI()
+auth = VerifyToken()
 
 # Create a checkpointer for persistence
 checkpointer = MemorySaver()
 graph = builder.compile(checkpointer=checkpointer)
 
+
 class ChatRequest(BaseModel):
     message: str
 
+
 class ResumeRequest(BaseModel):
     decision: str  # "approve" or the rejection feedback
+
 
 class ChatResponse(BaseModel):
     response: str
@@ -26,27 +31,30 @@ class ChatResponse(BaseModel):
     messages: List[Dict[str, Any]]
     interrupt: Optional[Dict[str, Any]] = None
 
+
 class StreamMessage(BaseModel):
     type: str  # "node_start", "node_end", "message", "interrupt", "error", "complete"
     data: Dict[str, Any]
     thread_id: str
 
+
 def message_to_dict(msg: BaseMessage) -> Dict[str, Any]:
     """Convert LangChain message to dictionary"""
     return {
         # "human", "ai", "system", etc.
-        "role": msg.type,  
+        "role": msg.type,
         "content": msg.content,
     }
+
 
 def extract_interrupt_data(interrupt_list) -> Optional[Dict[str, Any]]:
     """Extract interrupt data from the list format"""
     if not interrupt_list or not isinstance(interrupt_list, list):
         return None
-    
+
     # Get the first interrupt
     first_interrupt = interrupt_list[0]
-    
+
     # Handle different interrupt formats
     if hasattr(first_interrupt, 'value'):
         return first_interrupt.value
@@ -54,13 +62,15 @@ def extract_interrupt_data(interrupt_list) -> Optional[Dict[str, Any]]:
         return first_interrupt
     else:
         return {"data": str(first_interrupt)}
-    
+
+
 @app.post("/chat/{thread_id}")
-async def chat_endpoint(thread_id: str, request: ChatRequest) -> ChatResponse:
+async def chat_endpoint(thread_id: str, request: ChatRequest, auth_result: str = Security(auth.verify)) -> ChatResponse:
     """Send a message to a specific thread"""
     config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
 
     try:
+        print(auth_result)
         # Invoke the graph with the user message (async)
         result = await graph.ainvoke(
             {"messages": [{"role": "user", "content": request.message}]},
@@ -140,16 +150,17 @@ async def resume_endpoint(thread_id: str, request: ResumeRequest) -> ChatRespons
 async def get_thread_state(thread_id: str):
     """Get the current state of a thread"""
     config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
-    
+
     try:
         # Get state is synchronous, but we can wrap it if needed
         state = await graph.aget_state(config)
-        
+
         # Convert messages in state to dicts
         state_dict = dict(state.values)
         if "messages" in state_dict:
-            state_dict["messages"] = [message_to_dict(msg) for msg in state_dict["messages"]]
-        
+            state_dict["messages"] = [message_to_dict(
+                msg) for msg in state_dict["messages"]]
+
         return {
             "thread_id": thread_id,
             "state": state_dict,
