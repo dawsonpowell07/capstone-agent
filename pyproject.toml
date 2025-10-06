@@ -12,4 +12,5 @@ dependencies = [
     "langgraph[inem]>=0.6.7",
     "python-dotenv>=1.1.1",
     "ruff>=0.13.1",
+    "websockets>=15.0.1",
 ]

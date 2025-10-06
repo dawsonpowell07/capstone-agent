@@ -36,6 +36,7 @@ dependencies = [
     { name = "langgraph-cli" },
     { name = "python-dotenv" },
     { name = "ruff" },
+    { name = "websockets" },
 ]
 
 [package.metadata]
@@ -47,6 +48,7 @@ requires-dist = [
     { name = "langgraph-cli", specifier = ">=0.4.2" },
     { name = "python-dotenv", specifier = ">=1.1.1" },
     { name = "ruff", specifier = ">=0.13.1" },
+    { name = "websockets", specifier = ">=15.0.1" },
 ]
 
 [[package]]
