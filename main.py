@@ -64,13 +64,53 @@ def extract_interrupt_data(interrupt_list) -> Optional[Dict[str, Any]]:
         return {"data": str(first_interrupt)}
 
 
+@app.post("/chat/up/{thread_id}")
+async def chat_endpoint_unprotected(thread_id: str, request: ChatRequest) -> ChatResponse:
+    """Send a message to a specific thread"""
+    config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
+
+    try:
+        # Invoke the graph with the user message (async)
+        result = await graph.ainvoke(
+            {"messages": [{"role": "user", "content": request.message}]},
+            config=config
+        )
+
+        # Check if there's an interrupt
+        interrupt_data = result.get("__interrupt__")
+
+        # Convert messages to dictionaries
+        messages = [message_to_dict(msg) for msg in result.get("messages", [])]
+
+        if interrupt_data:
+            # There's a human approval needed
+            return ChatResponse(
+                response="Approval needed",
+                thread_id=thread_id,
+                messages=messages,
+                interrupt=extract_interrupt_data(interrupt_data)
+            )
+
+        # Extract the last AI message
+        last_message = messages[-1] if messages else {"content": "No response"}
+
+        return ChatResponse(
+            response=last_message.get("content", ""),
+            thread_id=thread_id,
+            messages=messages,
+            interrupt=None
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/chat/{thread_id}")
 async def chat_endpoint(thread_id: str, request: ChatRequest, auth_result: str = Security(auth.verify)) -> ChatResponse:
     """Send a message to a specific thread"""
     config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
 
     try:
-        print(auth_result)
         # Invoke the graph with the user message (async)
         result = await graph.ainvoke(
             {"messages": [{"role": "user", "content": request.message}]},
