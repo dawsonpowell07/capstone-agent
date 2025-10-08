@@ -1,1 +1,1 @@
-docker build -t my-fastapi-app .
+docker build -t vacation-agent .
