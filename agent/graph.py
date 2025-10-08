@@ -7,8 +7,9 @@ from agent.nodes.activity_agent import activity_agent
 from typing import Literal
 from agent.state import State
 
-
 # ---- Approval Handlers (explicit per-agent) ----
+
+
 def human_approve_flights(state: State) -> Command[Literal["approved_path_flights", "rejected_path_flights"]]:
     decision = interrupt(
         {
@@ -21,7 +22,7 @@ def human_approve_flights(state: State) -> Command[Literal["approved_path_flight
     else:
         # Add the feedback as a message so the agent sees it
         return Command(
-            goto="rejected_path_flights", 
+            goto="rejected_path_flights",
             update={
                 "flight_decision": "rejected",
                 "messages": [{"role": "user", "content": decision}]
@@ -53,8 +54,10 @@ def human_approve_activities(state: State) -> Command[Literal["approved_path_act
         return Command(goto="approved_path_activities", update={"activity_decision": "approved"})
     else:
         return Command(goto="rejected_path_activities", update={"activity_decision": "rejected"})
-    
+
 # ---- Post-decision Handlers ----
+
+
 def approved_node(state: State):
     print("✅ Approved path taken.")
     return state
@@ -76,10 +79,12 @@ async def call_flight_agent(state: State):
     new_state = await flight_agent.ainvoke(state)
     return new_state
 
+
 async def call_hotel_agent(state: State):
     # Call the hotel agent and update state with its messages
     new_state = await hotel_agent.ainvoke(state)
     return new_state
+
 
 async def call_activity_agent(state: State):
     # Call the activity agent and update state with its messages
