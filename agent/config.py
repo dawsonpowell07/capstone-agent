@@ -22,6 +22,17 @@ class Settings(BaseSettings):
     auth0_algorithms: str
     auth0_client_id: str
 
+    # database
+    mongo_uri: str
+    cosmos_db_endpoint: str
+    cosmos_db_key: str
+    cosmos_db_database_name: str
+    cosmos_db_container_name: str
+
+    google_maps_api: str
+
+    azure_maps_api_key: str
+
     class Config:
         env_file = ".env"
 

@@ -1,0 +1,9 @@
+name: vacation-agent-api
+services:
+  web:
+    project: .
+    language: python
+    host: appservice
+    app_location: .          
+    api_location: .        
+    output_location: .       

@@ -3,8 +3,15 @@ from typing import Optional
 import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import SecurityScopes, HTTPAuthorizationCredentials, HTTPBearer
+import logging
 
 from config import get_settings
+
+# Set up logging
+logger = logging.getLogger(__name__)
+
+# Initialize settings
+settings = get_settings()
 
 
 class UnauthorizedException(HTTPException):

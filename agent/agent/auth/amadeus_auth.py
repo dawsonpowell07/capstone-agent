@@ -1,19 +1,17 @@
-import requests
+import httpx
 import time
-import os
-from dotenv import load_dotenv
-
-load_dotenv()
+from config import get_settings
 
 
 class AmadeusAuth:
     def __init__(self):
-        self.client_id = os.environ["AMADEUS_API_KEY"]
-        self.client_secret = os.environ["AMADEUS_API_SECRET"]
+        settings = get_settings()
+        self.client_id = settings.amadeus_api_key
+        self.client_secret = settings.amadeus_api_secret
         self.token = None
         self.expiry = 0
 
-    def get_token(self):
+    async def get_token(self):
         if self.token and time.time() < self.expiry:
             return self.token  # still valid
 
@@ -23,9 +21,11 @@ class AmadeusAuth:
             "client_id": self.client_id,
             "client_secret": self.client_secret,
         }
-        resp = requests.post(url, data=payload)
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(url, data=payload)
         resp.raise_for_status()
         data = resp.json()
         self.token = data["access_token"]
-        self.expiry = time.time() + data["expires_in"] - 60  # refresh 1 min early
+        # refresh 1 min early
+        self.expiry = time.time() + data["expires_in"] - 60
         return self.token
